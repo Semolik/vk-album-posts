@@ -1,23 +1,12 @@
 <template>
     <div class="post-form">
         <inputField
-            label="Ссылка на альбом"
-            id="album_link"
-            v-model="link"
-            :error="link.length && !linkIsValid"
-        >
-            <template #icon>
-                <loading v-if="loadingLink" />
-                <success v-if="albumExists" />
-                <error v-if="!albumExists && !loadingLink && link.length" />
-            </template>
-        </inputField>
-        <inputField
             label="Текст поста"
             id="album-text"
             type="textarea"
             v-model="postText"
         ></inputField>
+
         <div class="date-picker-section">
             <label>
                 <input type="checkbox" v-model="includeDate" />
@@ -33,12 +22,36 @@
                 class="date-picker"
             />
         </div>
+        <inputField
+            label="Ссылка на альбом"
+            id="album_link"
+            v-model="link"
+            :error="link.length && !linkIsValid"
+        >
+            <template #icon>
+                <loading v-if="loadingLink" />
+                <success v-if="albumExists" />
+                <error v-if="!albumExists && !loadingLink && !!link.length" />
+            </template>
+        </inputField>
         <div v-if="albums.length" class="albums-list">
             <div v-for="album in albums" :key="album.id" class="album-item">
                 {{ album.title }}
-                <button @click="removeAlbum(album.id)" class="remove-button">
-                    <error />
-                </button>
+                <div class="album-actions">
+                    <a
+                        :href="`https://vk.com/${album.id}`"
+                        target="_blank"
+                        class="open-album-button"
+                    >
+                        Открыть
+                    </a>
+                    <button
+                        @click="removeAlbum(album.id)"
+                        class="remove-button"
+                    >
+                        <error />
+                    </button>
+                </div>
             </div>
         </div>
         <button
@@ -74,7 +87,11 @@ const date = ref(null);
 const groupId = ref(null);
 
 const isButtonActive = computed(() => {
-    return postText.value.trim() !== "" && (!includeDate.value || date.value);
+    return (
+        postText.value.trim() !== "" &&
+        (!includeDate.value || date.value) &&
+        albums.value.length > 0
+    );
 });
 
 const linkIsValid = computed(() => {
@@ -103,9 +120,13 @@ const checkAlbumExists = async (albumId, ownerId) => {
     albumExists.value = null; // Reset the album existence status
     try {
         const response = await fetch(
-            `https://api.vk.com/method/photos.getAlbums?owner_id=-${ownerId}&album_id=${albumId}&access_token=${accessToken.value}&v=5.199&count=1`
+            `https://api.vk.com/method/photos.getAlbums?owner_id=-${ownerId}&album_ids=${albumId}&access_token=${accessToken.value}&v=5.199&count=1`
         );
         const data = await response.json();
+        console.log(data);
+        console.log(data.response.items.length > 0);
+        console.log(data.response.items[0].owner_id == ownerId * -1);
+
         if (
             data.response &&
             data.response.items.length > 0 &&
@@ -255,13 +276,32 @@ onMounted(() => {
     border-radius: 4px;
     margin-bottom: 8px;
 }
-.remove-button {
-    background: none;
-    border: none;
-    cursor: pointer;
+.album-actions {
     display: flex;
+    gap: 8px;
     align-items: center;
-    justify-content: center;
+
+    .open-album-button {
+        background-color: transparent;
+        border: none;
+        color: var(--vkui--color_accent);
+        text-decoration: none;
+        cursor: pointer;
+        font-size: 14px;
+
+        &:hover {
+            text-decoration: underline;
+        }
+    }
+
+    .remove-button {
+        background: none;
+        border: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
 }
 .send-button {
     margin-top: 16px;
