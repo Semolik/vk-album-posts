@@ -42,7 +42,7 @@
 1. Клонируйте репозиторий:
 
 ```bash
-git clone https://github.com/yourusername/vk-album-posts.git
+git clone https://github.com/semolik/vk-album-posts.git
 cd vk-album-posts
 ```
 
