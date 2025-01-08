@@ -1,15 +1,24 @@
 <template>
-    <div class="wall-button" @click="modalOpened = !modalOpened">
+    <div
+        class="wall-button"
+        @click="postStore.isModalOpen = !postStore.isModalOpen"
+    >
         <span class="text">Пост с альбомом</span>
     </div>
-    <modal v-model:active="modalOpened" headText="Опубликовать пост с альбомом">
+    <modal
+        v-model:active="postStore.isModalOpen"
+        :headText="`${
+            postStore.isEditing ? 'Отредактировать' : 'Опубликовать'
+        } пост с альбомом`"
+    >
         <postForm />
     </modal>
 </template>
 <script setup>
 import modal from "./modal.vue";
 import postForm from "./post-form.vue";
-const modalOpened = ref(false);
+import { usePostStore } from "@/stores/postStore";
+const postStore = usePostStore();
 </script>
 <style scoped lang="scss">
 .wall-button {

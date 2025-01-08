@@ -4,38 +4,50 @@
             label="Текст поста"
             id="album-text"
             type="textarea"
-            v-model="postText"
+            v-model="postContent"
         ></inputField>
 
-        <div class="date-picker-section">
+        <div class="date-picker-section" v-if="!hideDatePicker">
             <label>
-                <input type="checkbox" v-model="includeDate" />
+                <input type="checkbox" v-model="includePublishDate" />
                 Включить дату
             </label>
             <VueDatePicker
-                v-if="includeDate"
-                v-model="date"
+                v-if="includePublishDate"
+                v-model="publishDate"
                 locale="ru"
                 cancelText="Отмена"
                 selectText="Выбрать"
                 :dark="true"
                 class="date-picker"
+                :minDate="new Date()"
             />
+            <div
+                v-if="postStore.isEditing && !includePublishDate"
+                class="warning"
+            >
+                Предупреждение: Если снять галочку, отложенная запись будет
+                опубликована немедленно.
+            </div>
         </div>
         <inputField
             label="Ссылка на альбом"
             id="album_link"
-            v-model="link"
-            :error="link.length && !linkIsValid"
+            v-model="albumLink"
+            :error="!!albumLink.length && !isAlbumLinkValid"
         >
             <template #icon>
-                <loading v-if="loadingLink" />
-                <success v-if="albumExists" />
-                <error v-if="!albumExists && !loadingLink && !!link.length" />
+                <loading v-if="isLoadingAlbum" />
+                <success v-if="isAlbumValid" />
+                <error
+                    v-if="
+                        !isAlbumValid && !isLoadingAlbum && !!albumLink.length
+                    "
+                />
             </template>
         </inputField>
-        <div v-if="albums.length" class="albums-list">
-            <div v-for="album in albums" :key="album.id" class="album-item">
+        <div v-if="albumList.length" class="albums-list">
+            <div v-for="album in albumList" :key="album.id" class="album-item">
                 {{ album.title }}
                 <div class="album-actions">
                     <a
@@ -46,7 +58,7 @@
                         Открыть
                     </a>
                     <button
-                        @click="removeAlbum(album.id)"
+                        @click="removeAlbumFromList(album.id)"
                         class="remove-button"
                     >
                         <error />
@@ -55,12 +67,12 @@
             </div>
         </div>
         <button
-            @click="sendPost"
+            @click="submitPost"
             class="send-button"
-            :class="{ active: isButtonActive }"
-            :disabled="!isButtonActive"
+            :class="{ active: isSubmitButtonActive }"
+            :disabled="!isSubmitButtonActive"
         >
-            Отправить пост
+            {{ postStore.isEditing ? "Сохранить изменения" : "Отправить пост" }}
         </button>
     </div>
 </template>
@@ -73,30 +85,61 @@ import success from "./icones/success.vue";
 import error from "./icones/error.vue";
 import VueDatePicker from "@vuepic/vue-datepicker";
 import "@vuepic/vue-datepicker/dist/main.css";
+import { retrieveAccessToken } from "@/utilities/AccessToken";
+import { usePostStore } from "@/stores/postStore";
 
-const link = ref("");
-const loadingLink = ref(false);
+const albumLink = ref("");
+const isLoadingAlbum = ref(false);
 const albumId = ref("");
 const ownerId = ref("");
 const accessToken = ref("");
-const albumExists = ref(null);
-const albums = ref([]);
-const postText = ref("");
-const includeDate = ref(false);
-const date = ref(null);
+const isAlbumValid = ref(null);
+const albumList = ref([]);
+const postContent = ref("");
+const includePublishDate = ref(false);
+const publishDate = ref(null);
 const groupId = ref(null);
+const hideDatePicker = ref(false);
 
-const isButtonActive = computed(() => {
+const postStore = usePostStore();
+
+watch(
+    () => postStore.postInfo,
+    (value) => {
+        if (value) {
+            postContent.value = value.text;
+            includePublishDate.value = !!value.date;
+            publishDate.value = value?.date || null;
+            if (publishDate.value && publishDate.value < new Date()) {
+                hideDatePicker.value = true;
+            } else {
+                hideDatePicker.value = false;
+            }
+            albumList.value = value.albums;
+        }
+    },
+    { immediate: true }
+);
+
+const isSubmitButtonActive = computed(() => {
+    if (postStore.isEditing) {
+        return (
+            postContent.value !== postStore.postInfo.text ||
+            publishDate.value !== postStore.postInfo.date ||
+            JSON.stringify(albumList.value) !==
+                JSON.stringify(postStore.postInfo.albums) ||
+            includePublishDate.value !== !!postStore.postInfo.date
+        );
+    }
     return (
-        postText.value.trim() !== "" &&
-        (!includeDate.value || date.value) &&
-        albums.value.length > 0
+        (!includePublishDate.value || publishDate.value) &&
+        albumList.value.length > 0
     );
 });
 
-const linkIsValid = computed(() => {
+const isAlbumLinkValid = computed(() => {
     const regex = /^https:\/\/vk\.com\/album-(\d+)_(\d+)$/;
-    const match = link.value.match(regex);
+    const match = albumLink.value.match(regex);
     if (match) {
         ownerId.value = match[1];
         albumId.value = match[2];
@@ -115,17 +158,14 @@ const debounce = (func, delay) => {
     };
 };
 
-const checkAlbumExists = async (albumId, ownerId) => {
-    loadingLink.value = true;
-    albumExists.value = null; // Reset the album existence status
+const checkAlbumExistence = async (albumId, ownerId) => {
+    isLoadingAlbum.value = true;
+    isAlbumValid.value = null; // Reset the album existence status
     try {
         const response = await fetch(
             `https://api.vk.com/method/photos.getAlbums?owner_id=-${ownerId}&album_ids=${albumId}&access_token=${accessToken.value}&v=5.199&count=1`
         );
         const data = await response.json();
-        console.log(data);
-        console.log(data.response.items.length > 0);
-        console.log(data.response.items[0].owner_id == ownerId * -1);
 
         if (
             data.response &&
@@ -133,77 +173,102 @@ const checkAlbumExists = async (albumId, ownerId) => {
             data.response.items[0].owner_id == ownerId * -1 &&
             data.response.items[0].id == albumId
         ) {
-            albumExists.value = true;
+            isAlbumValid.value = true;
             const albumTitle = data.response.items[0].title;
             const fullAlbumId = `album-${ownerId}_${albumId}`;
-            albums.value.push({ id: fullAlbumId, title: albumTitle });
-            link.value = ""; // Clear the link input field
+            const albumAlreadyExists = albumList.value.some(
+                (album) => album.id === fullAlbumId
+            );
+            if (!albumAlreadyExists) {
+                albumList.value.push({ id: fullAlbumId, title: albumTitle });
+            }
+            albumLink.value = ""; // Clear the link input field
             return true;
         } else {
-            albumExists.value = false;
+            isAlbumValid.value = false;
             return false;
         }
     } catch (error) {
         console.error("Error checking album existence:", error);
-        albumExists.value = false;
+        isAlbumValid.value = false;
         return false;
     } finally {
-        loadingLink.value = false;
+        isLoadingAlbum.value = false;
     }
 };
 
-const debouncedCheckAlbumExists = debounce(checkAlbumExists, 500);
+const debouncedCheckAlbumExistence = debounce(checkAlbumExistence, 500);
 
-const retrieveAccessToken = () => {
-    const regex = /^\d+:web_token:login:auth$/;
-    for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (regex.test(key)) {
-            const tokenData = JSON.parse(localStorage.getItem(key));
-            if (tokenData && tokenData.access_token) {
-                accessToken.value = tokenData.access_token;
-                break;
-            }
-        }
-    }
+const removeAlbumFromList = (albumId) => {
+    albumList.value = albumList.value.filter((album) => album.id !== albumId);
 };
 
-const removeAlbum = (albumId) => {
-    albums.value = albums.value.filter((album) => album.id !== albumId);
-};
-
-const sendPost = async () => {
+const submitPost = async () => {
+    if (!isSubmitButtonActive.value) return;
     try {
-        const publishTime = includeDate.value
-            ? Math.floor(new Date(date.value).getTime() / 1000)
+        const publishTimestamp = includePublishDate.value
+            ? Math.floor(new Date(publishDate.value).getTime() / 1000)
             : null;
-        const attachments = albums.value.map((album) => album.id).join(",");
+        const attachments = albumList.value.map((album) => album.id).join(",");
 
-        const response = await fetch(`https://api.vk.com/method/wall.post`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/x-www-form-urlencoded",
-            },
-            body: new URLSearchParams({
-                owner_id: -groupId.value,
-                from_group: 1,
-                message: postText.value,
-                attachments: attachments,
-                ...(publishTime && { publish_date: publishTime }),
-                access_token: accessToken.value,
-                v: "5.199",
-            }),
-        });
+        const params = {
+            owner_id: -groupId.value,
+            from_group: 1,
+            message: postContent.value,
+            attachments: attachments,
+            access_token: accessToken.value,
+            v: "5.199",
+        };
 
-        const data = await response.json();
-        if (data.response && data.response.post_id) {
-            console.log(
-                `Post successfully created. Post ID: ${data.response.post_id}`
+        if (postStore.isEditing) {
+            params.post_id = postStore.postInfo.id;
+            if (includePublishDate.value) {
+                params.publish_date = publishTimestamp;
+            }
+            const response = await fetch(
+                `https://api.vk.com/method/wall.edit`,
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/x-www-form-urlencoded",
+                    },
+                    body: new URLSearchParams(params),
+                }
             );
-            // Close the modal and reload the page
-            window.location.reload();
+
+            const data = await response.json();
+            if (data.response && data.response.post_id) {
+                console.log("Post successfully edited.");
+                // Close the modal and reload the page
+                window.location.reload();
+            } else {
+                console.error("Error editing post:", data);
+            }
         } else {
-            console.error("Error creating post:", data);
+            if (!hideDatePicker.value && publishTimestamp) {
+                params.publish_date = publishTimestamp;
+            }
+            const response = await fetch(
+                `https://api.vk.com/method/wall.post`,
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/x-www-form-urlencoded",
+                    },
+                    body: new URLSearchParams(params),
+                }
+            );
+
+            const data = await response.json();
+            if (data.response && data.response.post_id) {
+                console.log(
+                    `Post successfully created. Post ID: ${data.response.post_id}`
+                );
+                // Close the modal and reload the page
+                window.location.reload();
+            } else {
+                console.error("Error creating post:", data);
+            }
         }
     } catch (error) {
         console.error("VK API error:", error);
@@ -238,16 +303,16 @@ const getGroupIdFromUrl = async () => {
     }
 };
 
-watch(link, async (newLink) => {
-    if (linkIsValid.value) {
-        await debouncedCheckAlbumExists(albumId.value, ownerId.value);
+watch(albumLink, async (newLink) => {
+    if (isAlbumLinkValid.value) {
+        await debouncedCheckAlbumExistence(albumId.value, ownerId.value);
     } else {
-        albumExists.value = null; // Reset the album existence status when the link is invalid
+        isAlbumValid.value = null; // Reset the album existence status when the link is invalid
     }
 });
 
 onMounted(() => {
-    retrieveAccessToken();
+    accessToken.value = retrieveAccessToken();
     getGroupIdFromUrl();
 });
 </script>
@@ -263,6 +328,7 @@ onMounted(() => {
     display: flex;
     flex-direction: column;
     gap: 8px;
+    --dp-border-radius: 8px;
 }
 .albums-list {
     margin-top: 16px;
@@ -273,7 +339,7 @@ onMounted(() => {
     align-items: center;
     padding: 8px;
     background-color: var(--vkui--color_background_content);
-    border-radius: 4px;
+    border-radius: 8px;
     margin-bottom: 8px;
 }
 .album-actions {
@@ -320,5 +386,10 @@ onMounted(() => {
         color: white;
         cursor: not-allowed;
     }
+}
+.warning {
+    color: red;
+    font-size: 12px;
+    margin-top: 8px;
 }
 </style>

@@ -152,7 +152,6 @@ watch(
         flex-direction: column;
         padding: 16px;
         gap: $gap;
-        overflow: auto;
         box-shadow: var(--page-block-shadow);
 
         .modal-content {
