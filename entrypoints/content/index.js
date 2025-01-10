@@ -25,15 +25,17 @@ export default defineContentScript({
         const mountUI = async () => {
             const postButton = await findPostButton();
             if (postButton) {
+                if (postButton.querySelector("vk-album-posts")) {
+                    return;
+                }
                 const ui = await defineOverlay(ctx, postButton);
 
                 ui.mount();
+
                 const observer = new MutationObserver(() => {
                     addEditButtonToHeaders();
                 });
-
-                // Отслеживаем изменения в основном контейнере постов
-                const postsContainer = document.querySelector("#content"); // Замените #content на ваш селектор
+                const postsContainer = document.querySelector("#content");
                 if (postsContainer) {
                     observer.observe(postsContainer, {
                         childList: true,
@@ -72,13 +74,10 @@ function defineOverlay(ctx, postButton) {
         },
     });
 }
-function addEditButtonToHeaders() {
-    // Выбираем все элементы с классом заголовка поста
-    // const headers = document.querySelectorAll(".PostHeaderActions--inPost");
 
+function addEditButtonToHeaders() {
     const posts = document.querySelectorAll("._post");
     posts.forEach((post) => {
-        // Ищем контейнер для кнопок меню
         const header = post.querySelector(".PostHeader");
         if (!header) return;
         const menuButtonContainer = header.querySelector(
@@ -94,7 +93,6 @@ function addEditButtonToHeaders() {
             !header.querySelector(".edit-button") &&
             hasAlbumLink
         ) {
-            // Создаём кнопку
             const button = document.createElement("button");
             button.textContent = "Редактировать";
             button.className =
@@ -102,10 +100,8 @@ function addEditButtonToHeaders() {
             button.type = "button";
             button.setAttribute("aria-expanded", "false");
 
-            // Вставляем кнопку перед кнопкой "Действия"
             menuButtonContainer.insertAdjacentElement("beforebegin", button);
 
-            // Добавляем обработчик клика
             button.addEventListener("click", async () => {
                 const postStore = usePostStore();
                 const postId = post.getAttribute("data-post-id");
