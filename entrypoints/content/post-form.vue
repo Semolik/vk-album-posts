@@ -87,7 +87,9 @@ import VueDatePicker from "@vuepic/vue-datepicker";
 import "@vuepic/vue-datepicker/dist/main.css";
 import { retrieveAccessToken } from "@/utilities/AccessToken";
 import { usePostStore } from "@/stores/postStore";
+import { useToast } from "vue-toastification";
 
+const toast = useToast();
 const albumLink = ref("");
 const isLoadingAlbum = ref(false);
 const albumId = ref("");
@@ -166,7 +168,9 @@ const checkAlbumExistence = async (albumId, ownerId) => {
             `https://api.vk.com/method/photos.getAlbums?owner_id=-${ownerId}&album_ids=${albumId}&access_token=${accessToken.value}&v=5.199&count=1`
         );
         const data = await response.json();
-
+        if (data?.error) {
+            throw Error(JSON.stringify(data.error));
+        }
         if (
             data.response &&
             data.response.items.length > 0 &&
@@ -189,7 +193,8 @@ const checkAlbumExistence = async (albumId, ownerId) => {
             return false;
         }
     } catch (error) {
-        console.error("Error checking album existence:", error);
+        toast.error("Ошибка проверки существования альбома");
+        console.error("Ошибка проверки существования альбома:", error);
         isAlbumValid.value = false;
         return false;
     } finally {
@@ -237,11 +242,15 @@ const submitPost = async () => {
             );
 
             const data = await response.json();
+            if (data?.error) {
+                throw Error(JSON.stringify(data.error));
+            }
             if (data.response && data.response.post_id) {
                 console.log("Post successfully edited.");
-                // Close the modal and reload the page
+                toast.success("Пост успешно отредактирован");
                 window.location.reload();
             } else {
+                toast.error("Ошибка редактирования поста");
                 console.error("Error editing post:", data);
             }
         } else {
@@ -260,17 +269,27 @@ const submitPost = async () => {
             );
 
             const data = await response.json();
+            if (data?.error) {
+                throw Error(JSON.stringify(data.error));
+            }
             if (data.response && data.response.post_id) {
                 console.log(
                     `Post successfully created. Post ID: ${data.response.post_id}`
                 );
                 // Close the modal and reload the page
+                toast.success("Пост успешно создан");
                 window.location.reload();
             } else {
+                toast.error("Ошибка создания поста");
                 console.error("Error creating post:", data);
             }
         }
     } catch (error) {
+        toast.error(
+            `Ошибка ${
+                postStore.isEditing ? "редактирования" : "создания"
+            } поста`
+        );
         console.error("VK API error:", error);
     }
 };
@@ -291,12 +310,16 @@ const getGroupIdFromUrl = async () => {
                     `https://api.vk.com/method/groups.getById?group_ids=${groupScreenName}&access_token=${accessToken.value}&v=5.199`
                 );
                 const data = await response.json();
+                if (data?.error) {
+                    throw Error(JSON.stringify(data.error));
+                }
                 if (data.response && data.response.length > 0) {
                     groupId.value = data.response[0].id;
                 } else {
                     console.error("Group not found:", groupScreenName);
                 }
             } catch (error) {
+                toast.error("Ошибка получения id группы");
                 console.error("Error fetching group ID:", error);
             }
         }

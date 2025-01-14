@@ -16,7 +16,8 @@
     "dependencies": {
         "@vuepic/vue-datepicker": "^10.0.0",
         "pinia": "^2.3.0",
-        "vue": "^3.4.27"
+        "vue": "^3.4.27",
+        "vue-toastification": "^2.0.0-rc.5"
     },
     "devDependencies": {
         "@wxt-dev/module-vue": "^1.0.0",

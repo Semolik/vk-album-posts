@@ -1,33 +1,62 @@
 import App from "./App.vue";
 import { createApp } from "vue";
-import "./reset.css";
 import { createPinia } from "pinia";
 import { usePostStore } from "@/stores/postStore";
+import Toast from "vue-toastification";
+import "./reset.css";
+import "vue-toastification/dist/index.css";
+
 export default defineContentScript({
     matches: ["*://vk.com/*"],
     cssInjectionMode: "ui",
 
     async main(ctx) {
-        // Функция для повторного поиска кнопки
-        const findPostButton = async (retries = 15, interval = 1000) => {
+        let abortController = new AbortController();
+        const findPostButton = async (
+            retries = 15,
+            interval = 1000,
+            signal
+        ) => {
             for (let attempt = 0; attempt < retries; attempt++) {
+                if (signal.aborted) {
+                    return null;
+                }
                 const postButton = document.getElementById(
                     "page_block_submit_post"
                 );
                 if (postButton) {
                     return postButton;
                 }
-                await new Promise((resolve) => setTimeout(resolve, interval));
+                try {
+                    await new Promise((resolve, reject) => {
+                        const timeoutId = setTimeout(resolve, interval);
+                        signal.addEventListener(
+                            "abort",
+                            () => {
+                                clearTimeout(timeoutId);
+                                reject(new Error("Aborted"));
+                            },
+                            { once: true }
+                        );
+                    });
+                } catch (error) {
+                    if (error.message === "Aborted") {
+                        return null;
+                    }
+                    throw error;
+                }
             }
             return null;
         };
 
         const mountUI = async () => {
-            const postButton = await findPostButton();
+            const postButton = await findPostButton(
+                undefined,
+                undefined,
+                abortController.signal
+            );
             if (postButton) {
-                if (postButton.querySelector("vk-album-posts")) {
-                    return;
-                }
+                if (postButton.querySelector("vk-album-posts")) return;
                 const ui = await defineOverlay(ctx, postButton);
 
                 ui.mount();
@@ -50,6 +79,8 @@ export default defineContentScript({
 
         // Перемонтировка при изменении пути
         ctx.addEventListener(window, "wxt:locationchange", async () => {
+            abortController.abort(); // Отменяем текущий поиск
+            abortController = new AbortController(); // Создаем новый контроллер для следующего поиска
             await mountUI();
         });
     },
@@ -66,6 +97,7 @@ function defineOverlay(ctx, postButton) {
             const pinia = createPinia();
             const app = createApp(App);
             app.use(pinia);
+            app.use(Toast, { container: container });
             app.mount(container);
             return app;
         },
