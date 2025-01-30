@@ -24,6 +24,7 @@ export default defineContentScript({
                 const postButton = document.getElementById(
                     "page_block_submit_post"
                 );
+                console.log(postButton);
                 if (postButton) {
                     return postButton;
                 }
